@@ -41,7 +41,7 @@ public class ModularizationTest {
 	public static void main(String[]args) throws IOException 
 {
   
-	 String file="resources/ont";
+	 String file="C:\\Users\\Doo5i\\git\\GLaMoR\\data\\ontologies";
 	 System.out.println(System.getProperty("java.class.path"));
 	 ModularizationTest MA=new ModularizationTest(file);
 	  MA.read(file);
@@ -72,8 +72,8 @@ public   void read(String file) throws IOException
 	Controller con;
 	ModuleEvaluation ME;
 	double start=0, end=0;
-	String content = "Ontology\t  No. of modules \t Time \t HOMO \t HEMO \t rel. Size";
-	File Ofile = new File("src/resources/merge/analysis.txt");
+	String content = "Ontology\t,  No. of modules, \t Time, \t HOMO, \t HEMO, \t rel. Size";
+	File Ofile = new File("src/resources/merge/analysis.csv");
 	File pfile=Ofile.getParentFile();
 	  if(!pfile.exists())
 	  {
@@ -82,7 +82,7 @@ public   void read(String file) throws IOException
 	FileWriter fw = new FileWriter(Ofile.getAbsoluteFile());
 	 BufferedWriter bw = new BufferedWriter(fw);
 	 bw.write(content);
-	for(int i=0;i<filesInFolder.size();i++)
+	for(int i=0;i<1;i++)
 	{
 		File f=filesInFolder.get(i);
 		String path=f.getPath();
@@ -100,7 +100,7 @@ public   void read(String file) throws IOException
 		content="\n"+f.getName()+"\t"+NumCH+"\t"+end;
 		 ME=new ModuleEvaluation(con.getModelBuild(),con.getClusters());
 		 ME.Eval_SeeCont();
-		 content="\n"+f.getName()+"\t"+NumCH+"\t"+end+ "\t"+ME.getHoMO()+"\t"+ME.getHEMo()+"\t"+ME.getRS();
+		 content="\n"+f.getName()+"\t,"+NumCH+"\t,"+end+ "\t,"+ME.getHoMO()+"\t,"+ME.getHEMo()+"\t,"+ME.getRS();
 		 //stream.write(content.getBytes());
 		 bw.write(content); 
         //System.out.println(ME.getHEMo()+"\t number of clusters---"+ME.getHoMO()+"\t"+ME.getRS());
@@ -117,7 +117,7 @@ public void modularize() throws IOException
 {
 	  GeneralAnalysis GA;
 	  String content = "Ontology\t No. calss\t No. of total class \t No. of sub \t No. of Prop"+"\t No. of object Pro. \t No. of data prop";
-	  File file = new File("src/resources/results/analysis.txt");
+	  File file = new File("src/resources/results/analysis.csv");
 	  File pfile=file.getParentFile();
 	  if(!pfile.exists())
 	  {
@@ -133,7 +133,7 @@ public void modularize() throws IOException
 	   	  OntModel om=models.get(i);
 		  GA=new GeneralAnalysis(om);
 		  GA.computeStatics();
-		  content="\n"+f.getName()+"\t"+GA.getNumClass()+"\t"+GA.getTotnumClass()+"\t"+GA.getNumClass()+"\t"+GA.getNumProp()+"\t"+GA.getNumObectPro()+"\t"+GA.getNumDataPro();
+		  content="\n"+f.getName()+"\t,"+GA.getNumClass()+"\t,"+GA.getTotnumClass()+"\t,"+GA.getNumClass()+"\t,"+GA.getNumProp()+"\t,"+GA.getNumObectPro()+"\t,"+GA.getNumDataPro();
 		  bw.write(content);
 	  }
 	  bw.close();

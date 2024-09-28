@@ -16,7 +16,7 @@
     <RESOURCE_PATH>${project.basedir}/src/resources</RESOURCE_PATH>
     <slf4j.version>1.5.8</slf4j.version>
     <java-version>1.8</java-version>
-   
+      <exec.mainClass>src/main/java/main/Main</exec.mainClass>
  </properties>
  
   <build>
@@ -65,7 +65,7 @@
 		<repository>
 			<id>external-jars</id>
 			<name>External JAR Repo</name>
-			<url>file://${project.basedir}/external-jars/fusion/oapt</url>
+			<url>file://C:/Users/Doo5ive/git/GLaMoR/OAPT/external-jars/fusion/oapt</url>
 			<snapshots>
 				<enabled>true</enabled>
 				<updatePolicy>always</updatePolicy>
@@ -142,12 +142,13 @@
         </exclusions>
 </dependency>
 
-    <!-- https://mvnrepository.com/artifact/dom4j/dom4j -->
-<dependency>
-    <groupId>dom4j</groupId>
-    <artifactId>dom4j</artifactId>
-    <version>2.1.3</version>
-</dependency>
+      <!-- https://mvnrepository.com/artifact/org.dom4j/dom4j -->
+      <dependency>
+          <groupId>org.dom4j</groupId>
+          <artifactId>dom4j</artifactId>
+          <version>2.1.3</version>
+      </dependency>
+
    
     <!-- https://mvnrepository.com/artifact/org.apache.lucene/lucene-snowball -->
 <dependency>

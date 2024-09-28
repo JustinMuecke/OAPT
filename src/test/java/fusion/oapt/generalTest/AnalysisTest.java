@@ -111,7 +111,7 @@ public class AnalysisTest {
 	  String content = "Ontology\t No. class\t No. of total class \t No. of sub \t No. of Prop \t No. of object Pro. "
 	  		+ "\t No. of data prop \t No. of Individual \t No. of comments \t No. of labels \t Design metric \t KB metric"
 	  		+ " \t class metric \t richness \t time";
-	  File file = new File("src/resources/results/analysis.txt");
+	  File file = new File("src/resources/results/analysis.csv");
 	  File pfile=file.getParentFile();
 	  if(!pfile.exists())
 	  {
