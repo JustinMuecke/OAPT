@@ -15,36 +15,22 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
-
+import java.util.stream.Stream;
 
 
 public class Main {
 
-    private  String filepath = null;
-    private ArrayList<OntModel> models = null;
-
-    public static void main(String[]args) throws IOException
-    {
-        System.out.println("WORKING");
-        System.out.println(System.getProperty("user.dir"));
-        final String filepath = "../data/ontologies/";
-        List<OntModel> models=new ArrayList<OntModel>();
-        List<File>filesInFolder=new ArrayList<File>();
-        System.out.println(System.getProperty("java.class.path"));
-        read(filepath, models);
-    }
 
 
-
-
-    public static void read(String file, List<OntModel> models) throws IOException
-    {
+    public static void main(String[] args) throws IOException {
         List<File> filesInFolder = null;
-
+        List<String> completedOntologies = findCompletedOntologies("../data/ont_modules");
         try {
-            filesInFolder = Files.walk(Paths.get(file))
+            filesInFolder = Files.walk(Paths.get("../data/ontologies"))
                     .filter(Files::isRegularFile)
                     .map(Path::toFile)
                     .collect(Collectors.toList());
@@ -53,88 +39,84 @@ public class Main {
             return;
         }
 
-        System.out.println("the total number number of owl files:\t"+filesInFolder.size());
-        Controller con;
-        ModuleEvaluation moduleEvaluation;
-        double start=0, end=0;
-        String content = "Ontology, No. of modules ,Time ,HOMO ,HEMO ,rel. Size";
+        System.out.println("The total number of owl files: " + filesInFolder.size());
         File Ofile = new File("src/resources/merge/analysis.csv");
-        File pfile=Ofile.getParentFile();
-        if(!pfile.exists())
-        {
+        File pfile = Ofile.getParentFile();
+        if (!pfile.exists()) {
             pfile.mkdir();
         }
+
         FileWriter fw = new FileWriter(Ofile.getAbsoluteFile());
         BufferedWriter bw = new BufferedWriter(fw);
-        bw.write(content);
-        for(int i=0;i<1;i++)
-        {
-            try {
-                File f = filesInFolder.get(i);
-                String path = f.getPath();
-                System.out.println(i + ",the file:\t" + path);
-                start = System.currentTimeMillis();
-                con = new Controller(path);
-                models.add(con.getOntModel());
-                FindOptimalCluster OP = new FindOptimalCluster(con.MB);
-                int NumCH = OP.FindOptimalClusterFunc();
-                Coordinator.KNumCH = NumCH;
-                //con.runPartition();
-                con.InitialRun_API("SeeCOnt", Coordinator.KNumCH);
-                //ArrayList<OntModel> modules=Coordinator.getModules();
-                end = (System.currentTimeMillis() - start) * .001;
-                content = "\n" + f.getName() + "," + NumCH + "," + end;
-                moduleEvaluation = new ModuleEvaluation(con.getModelBuild(), con.getClusters());
-                moduleEvaluation.Eval_SeeCont();
-                content = "\n" + f.getName() + "," + NumCH + "," + end + "," + moduleEvaluation.getHoMO() + "," + moduleEvaluation.getHEMo() + "," + moduleEvaluation.getRS();
-                //stream.write(content.getBytes());
-                bw.write(content);
-                //System.out.println(moduleEvaluation.getHEMo()+",number of clusters---"+moduleEvaluation.getHoMO()+","+moduleEvaluation.getRS());
-                System.out.println(NumCH + ",the file:\t" + f.getName() + ",time \t" + end);
-            } catch (Exception e){
-                File file_error = new File("src/resources/merge/error.csv");
-                FileWriter fwe = new FileWriter(file_error);
-                BufferedWriter bwe = new BufferedWriter(fwe);
-                bwe.write(filesInFolder.get(i).getName() + ":\t" + e.toString());
+        String header = "Ontology, No. of modules ,Time ,HOMO ,HEMO ,rel. Size";
+        bw.write(header);
+
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        for (File file : filesInFolder) {
+            if(completedOntologies.contains(file.getName())) continue;
+            executor.submit(() -> {
+                try {
+                    processFile(file, bw);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    logError(file, e);
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
+                executor.shutdownNow();
             }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
         }
-        //stream.close();
+
         bw.close();
-        //System.out.println("the number of models:\t"+models.size());
     }
-
-
-    public void modularize(List<File> filesInFolder) throws IOException
-    {
-        GeneralAnalysis GA;
-        String content = "Ontology,No. calss,No. of total class ,No. of sub ,No. of Prop,"+",No. of object Pro. ,,No. of data prop";
-        File file = new File("src/resources/results/analysis.csv");
-        File pfile=file.getParentFile();
-        if(!pfile.exists())
-        {
-            pfile.mkdir();
+    private static List<String> findCompletedOntologies(String path) {
+        List<String> filesInFolder = null;
+        try (Stream<Path> fif = Files.walk(Paths.get(path))){
+            filesInFolder = fif
+                    .filter(Files::isRegularFile)
+                    .map(Path::toFile)
+                    .map(File::getName)
+                    .map(name -> name.split("_Module")[0]+".owl")
+                    .distinct()
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new LinkedList<String>();
         }
-        FileWriter fw = new FileWriter(file.getAbsoluteFile());
-        BufferedWriter bw = new BufferedWriter(fw);
-        bw.write(content);
-
-        for(int i=0;i<models.size();i++)
-        {
-            File f=filesInFolder.get(i);
-            OntModel om=models.get(i);
-            GA=new GeneralAnalysis(om);
-            GA.computeStatics();
-            content="\n"+f.getName()+","+GA.getNumClass()+","+GA.getTotnumClass()+","+GA.getNumClass()+","+GA.getNumProp()+","+GA.getNumObectPro()+","+GA.getNumDataPro();
+        return filesInFolder;
+    }
+    private static void processFile(File f, BufferedWriter bw) throws IOException {
+        String path = f.getPath();
+        double start = System.currentTimeMillis();
+        Controller con = new Controller(path);
+        FindOptimalCluster OP = new FindOptimalCluster(con.MB);
+        int NumCH = OP.FindOptimalClusterFunc();
+        Coordinator.KNumCH = NumCH;
+        con.InitialRun_API("SeeCOnt", Coordinator.KNumCH);
+        double end = (System.currentTimeMillis() - start) * 0.001;
+        ModuleEvaluation moduleEvaluation = new ModuleEvaluation(con.getModelBuild(), con.getClusters());
+        moduleEvaluation.Eval_SeeCont();
+        String content = "\n" + f.getName() + "," + NumCH + "," + end + "," + moduleEvaluation.getHoMO() + "," + moduleEvaluation.getHEMo() + "," + moduleEvaluation.getRS();
+        synchronized (bw) {
             bw.write(content);
+            bw.flush();
         }
-        bw.close();
+        System.out.println(NumCH + ", the file: " + f.getName() + ", time: " + end);
     }
 
-
-
-    public OntModel getOntModel1()
-    {
-        return models.get(0);
+    private static void logError(File file, Exception e) {
+        try (BufferedWriter bwe = new BufferedWriter(new FileWriter("src/resources/merge/error.csv", true))) {
+            bwe.write(file.getName() + ":\t" + e.toString());
+            bwe.flush();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
     }
 
 }
