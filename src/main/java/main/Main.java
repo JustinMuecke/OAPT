@@ -1,8 +1,11 @@
 package main;
 
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.DeliverCallback;
 import fusion.oapt.algorithm.partitioner.SeeCOnt.Findk.FindOptimalCluster;
-import fusion.oapt.algorithm.partitioner.SeeCOnt.ModuleEvaluation;
-import fusion.oapt.general.analysis.GeneralAnalysis;
+
 import fusion.oapt.general.cc.Controller;
 import fusion.oapt.general.cc.Coordinator;
 import org.apache.jena.ontology.OntModel;
@@ -11,9 +14,13 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -24,57 +31,110 @@ import java.util.stream.Stream;
 
 public class Main {
 
+    private static final String RABBITMQ_HOST = System.getenv("RABBITMQ_HOST");
+    private static  String QUEUE_INPUT = System.getenv("RABBITMQ_QUEUE_INPUT");
+    private static  String QUEUE_OUTPUT= System.getenv("RABBITMQ_QUEUE_OUTPUT");
 
+    private static  String POSTGRES_HOST = System.getenv("POSTGRES_HOST");
+    private static  String POSTGRES_USER = System.getenv("POSTGRES_USER");
+    private static  String POSTGRES_PASSWORD = System.getenv("POSTGRES_PASSWORD");
+    private static  String POSTGRES_DB = System.getenv("POSTGRES_DB");
 
-    public static void main(String[] args) throws IOException {
-        List<File> filesInFolder = null;
-        List<String> completedOntologies = findCompletedOntologies("../data/ont_modules");
-        try {
-            filesInFolder = Files.walk(Paths.get("../data/ontologies"))
-                    .filter(Files::isRegularFile)
-                    .map(Path::toFile)
-                    .collect(Collectors.toList());
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
-        }
+    public static void main(String[] args) throws IOException, TimeoutException, InterruptedException {
 
-        System.out.println("The total number of owl files: " + filesInFolder.size());
-        File Ofile = new File("src/resources/merge/analysis.csv");
-        File pfile = Ofile.getParentFile();
-        if (!pfile.exists()) {
-            pfile.mkdir();
-        }
+        QUEUE_INPUT = "Ontologies";
+        QUEUE_OUTPUT = "Modules_Preprocess";
 
-        FileWriter fw = new FileWriter(Ofile.getAbsoluteFile());
-        BufferedWriter bw = new BufferedWriter(fw);
-        String header = "Ontology, No. of modules ,Time ,HOMO ,HEMO ,rel. Size";
-        bw.write(header);
+        POSTGRES_HOST ="postgres";
+        POSTGRES_USER ="postgres_user";
+        POSTGRES_PASSWORD = "postgress_password";
+        POSTGRES_DB = "data_processing";
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost("rabbitmq");
+        factory.setUsername("rabbitmq_user");
+        factory.setPassword("rabbitmq_password");
+        Connection connection = null;
+        Channel channel = null;
 
-        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-        for (File file : filesInFolder) {
-            if(completedOntologies.contains(file.getName())) continue;
-            executor.submit(() -> {
+        while (connection == null || channel == null) {
+            try {
+                // Attempt to establish a connection and channel
+                System.out.println(RABBITMQ_HOST);
+                connection = factory.newConnection();
+                channel = connection.createChannel();
+
+                System.out.println("Connected to RabbitMQ successfully.");
+            } catch (Exception e) {
+                System.out.println("Error connecting to RabbitMQ: " + e.getMessage());
+                System.out.println("Retrying in 5 seconds...");
+
+                // Sleep for 5 seconds before retrying
                 try {
-                    processFile(file, bw);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    logError(file, e);
+                    Thread.sleep(5000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
                 }
-            });
-        }
-
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
-                executor.shutdownNow();
             }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
         }
 
-        bw.close();
+        channel.queueDeclare(QUEUE_INPUT, true, false, false, null);
+        channel.queueDeclare(QUEUE_OUTPUT, true, false, false, null);
+
+        Channel finalChannel = channel;
+        DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+            String filepath = new String(delivery.getBody(), StandardCharsets.UTF_8);
+            updateStatusInModularizationDatabaseStart(filepath);
+            List<String> modulePaths = modularize(filepath);
+            if(!modulePaths.isEmpty()) {
+                //TODO: FIND why no update in Database
+                updateStatusInModularizationDatabaseEnd(filepath, modulePaths.size());
+                for (String modulePath : modulePaths) {
+                    finalChannel.basicPublish("", QUEUE_OUTPUT, null, modulePath.getBytes(StandardCharsets.UTF_8));
+                    updateStatusInPreprocessingDatabase(modulePath);
+                }
+            }
+
+            System.out.println("Received file: " + filepath);
+            // Acknowledge the message
+            finalChannel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
+        };
+
+        channel.basicConsume(QUEUE_INPUT, false, deliverCallback, consumerTag -> { });
+        System.out.println("Waiting for messages. To exit press CTRL+C");
+
+        while (true) {
+            Thread.sleep(1000);
+        }
     }
+
+    private static List<String> modularize(String filepath) throws IOException {
+        File dir = new File("/input");
+        String[] files = dir.list();
+        if (files != null) {
+            for (String file : files) {
+                System.out.println("File in directory: " + file);
+            }
+        }
+
+        List<String> completedOntologies = findCompletedOntologies("/input");
+        System.out.println(completedOntologies);
+        if(completedOntologies.contains(filepath)){
+            return findCompletedModulesOfOntologie(filepath);
+        }
+        return processFile(new File("/input/" + filepath));
+    }
+
+    private static List<String> findCompletedModulesOfOntologie(String filepath) throws IOException {
+        String name = filepath.split("\\.")[0];
+        try(Stream<Path> fif = Files.walk(Paths.get("/output"))){
+            return fif.filter(Files::isRegularFile)
+                    .map(Path::toFile)
+                    .map(File::getName)
+                    .filter(fileName -> fileName.contains(name))
+                    .collect(Collectors.toList());
+        }
+    }
+
     private static List<String> findCompletedOntologies(String path) {
         List<String> filesInFolder = null;
         try (Stream<Path> fif = Files.walk(Paths.get(path))){
@@ -91,23 +151,20 @@ public class Main {
         }
         return filesInFolder;
     }
-    private static void processFile(File f, BufferedWriter bw) throws IOException {
+    private static List<String> processFile(File f) throws IOException {
+        List<String> moduleFileNames = new ArrayList<>();
         String path = f.getPath();
-        double start = System.currentTimeMillis();
+        System.out.println(path);
         Controller con = new Controller(path);
         FindOptimalCluster OP = new FindOptimalCluster(con.MB);
         int NumCH = OP.FindOptimalClusterFunc();
         Coordinator.KNumCH = NumCH;
-        con.InitialRun_API("SeeCOnt", Coordinator.KNumCH);
-        double end = (System.currentTimeMillis() - start) * 0.001;
-        ModuleEvaluation moduleEvaluation = new ModuleEvaluation(con.getModelBuild(), con.getClusters());
-        moduleEvaluation.Eval_SeeCont();
-        String content = "\n" + f.getName() + "," + NumCH + "," + end + "," + moduleEvaluation.getHoMO() + "," + moduleEvaluation.getHEMo() + "," + moduleEvaluation.getRS();
-        synchronized (bw) {
-            bw.write(content);
-            bw.flush();
+        List<OntModel> modules = con.InitialRun_API("SeeCOnt", Coordinator.KNumCH);
+        String basename = f.getName().split("\\.")[0];
+        for(int i = 0; i<modules.size(); i++){
+            moduleFileNames.add(basename + "_Module_" + i + ".owl");
         }
-        System.out.println(NumCH + ", the file: " + f.getName() + ", time: " + end);
+        return moduleFileNames;
     }
 
     private static void logError(File file, Exception e) {
@@ -118,5 +175,71 @@ public class Main {
             ex.printStackTrace();
         }
     }
+    private static void updateStatusInPreprocessingDatabase(String moduleName) {
+        String url = "jdbc:postgresql://" + POSTGRES_HOST + ":5432/" + POSTGRES_DB;
+        String insertQuery = "INSERT INTO preprocessing (file_name, status, consistent) VALUES (?, ?, ?)";
+        try (java.sql.Connection dbConnection = DriverManager.getConnection(url, POSTGRES_USER, POSTGRES_PASSWORD);
+             PreparedStatement statement = dbConnection.prepareStatement(insertQuery)) {
+            statement.setString(1, moduleName);
+            statement.setString(2, "Waiting");
+            statement.setString(3, "True");
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.err.println("Error logging to the database");
+        }
+    }
 
+    private static void updateStatusInModificationDatabase(String moduleName) {
+        String url = "jdbc:postgresql://" + POSTGRES_HOST + ":5432/" + POSTGRES_DB;
+        String insertQuery = "INSERT INTO modification (file_name, status, injected_axiom) VALUES (?, ?, ?)";
+
+        sendQuery(moduleName, url, insertQuery);
+    }
+
+    private static void sendQuery(String moduleName, String url, String insertQuery) {
+        try (java.sql.Connection dbConnection = DriverManager.getConnection(url, POSTGRES_USER, POSTGRES_PASSWORD);
+             PreparedStatement statement = dbConnection.prepareStatement(insertQuery)) {
+            statement.setString(1, moduleName);
+            statement.setString(2, "Waiting");
+            statement.setString(3, "TBD");
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.err.println("Error logging to the database");
+        }
+    }
+
+    private static void updateStatusInModularizationDatabaseEnd(String ontName, int cluster) {
+        String url = "jdbc:postgresql://" + POSTGRES_HOST + ":5432/" + POSTGRES_DB;
+        String updateQuery = "UPDATE modularization SET status = ?, cluster=? WHERE file_name = ?";
+
+        try (java.sql.Connection dbConnection = DriverManager.getConnection(url, POSTGRES_USER, POSTGRES_PASSWORD);
+             PreparedStatement statement = dbConnection.prepareStatement(updateQuery)) {
+            statement.setString(1, "Done");
+            statement.setString(2, String.valueOf(cluster));
+            statement.setString(3, ontName);
+
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.err.println("Error logging to the database");
+        }
+    }
+
+    private static void updateStatusInModularizationDatabaseStart(String ontName) {
+        String url = "jdbc:postgresql://" + POSTGRES_HOST + ":5432/" + POSTGRES_DB;
+        String updateQuery = "UPDATE modularization SET status = ?, cluster=? WHERE file_name = ?";
+
+        try (java.sql.Connection dbConnection = DriverManager.getConnection(url, POSTGRES_USER, POSTGRES_PASSWORD);
+             PreparedStatement statement = dbConnection.prepareStatement(updateQuery)) {
+            statement.setString(1, "Processing");
+            statement.setString(2, "TBD");
+            statement.setString(3, ontName);
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            System.err.println("Error logging to the database");
+        }
+    }
 }

@@ -4,6 +4,7 @@ package fusion.oapt.general.cc;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 import fusion.oapt.algorithm.partitioner.SeeCOnt.CClustering;
 import fusion.oapt.algorithm.partitioner.SeeCOnt.Cluster;
@@ -119,7 +120,7 @@ public class Controller
  }
   
   
-  public  void InitialRun_API (String selectedType, int k){
+  public List<OntModel> InitialRun_API (String selectedType, int k){
 	     if (Controller.CheckBuildModel == false) {
 	 		MB=new ModelBuild(PartitioningPanel.NameAddressOnt);
 	 		MB.build();
@@ -134,19 +135,20 @@ public class Controller
 		    C_Ont1.StepsCClustering(0);   //0 means call from Execute button to partition the whole ontology (normal case)
 		    clusters=C_Ont1.getClusters();
 		    modules=C_Ont1.getModules();
-		    break;
-	         
+			return modules;
+
 	     case "AxCOnt":
 	    	AxiomClustering axiom_Ont1= new AxiomClustering ( BuildModel.rbgmModel,  BuildModel.fn1, 500, BuildModel.wd);
 	    	axiom_Ont1.StepsCClustering();
-	      	break;
-	     
+			return null;
+
 	     case "PBM":
 	    	 Partitioner p1 = new Partitioner(BuildModel.rbgmModel,  BuildModel.fn1, 500, BuildModel.wd);
 	         p1.partition();
-	    	 break;
+	    	 return null;
 	     
-	     } 
+	     }
+		 return null;
 	 }
   
   public  ArrayList<OntModel> getModules()

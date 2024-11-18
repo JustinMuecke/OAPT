@@ -164,7 +164,7 @@ buildNumber.properties
 !src/**/build/
 build/*
 .gradle/*
-.idea/* 
+.idea/*
 
 # Ignore Gradle GUI config
 gradle-app.setting

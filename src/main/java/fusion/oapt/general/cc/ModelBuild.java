@@ -129,6 +129,7 @@ public class ModelBuild {
     	InputStream fileStream=null;
     	if(nameOnt.endsWith(".owl") || nameOnt.endsWith(".rdf") || nameOnt.endsWith(".obo") || nameOnt.endsWith(".ttl"))
 			try {
+				System.out.println(System.getProperty("user.dir"));
 				in = new FileInputStream(nameOnt);
 			} catch (FileNotFoundException e2) {
 				// TODO Auto-generated catch block
@@ -249,7 +250,7 @@ public class ModelBuild {
     	}
     	model=OntModel;
     	 
-         wd = "."+File.separator+"temp"+File.separator;
+         wd = "."+File.separator+"output"+File.separator;
          File file = new File(wd);
          if (file.exists() == false) {
                 file.mkdir();
