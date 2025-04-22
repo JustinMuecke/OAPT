@@ -110,15 +110,9 @@ public class Main {
     private static List<String> modularize(String filepath) throws IOException {
         File dir = new File("/input");
         String[] files = dir.list();
-        if (files != null) {
-            for (String file : files) {
-                System.out.println("File in directory: " + file);
-            }
-        }
-
-        List<String> completedOntologies = findCompletedOntologies("/input");
-        System.out.println(completedOntologies);
+        List<String> completedOntologies = findCompletedOntologies("/app/output");
         if(completedOntologies.contains(filepath)){
+            System.out.println("Completed: " + filepath);
             return findCompletedModulesOfOntologie(filepath);
         }
         return processFile(new File("/input/" + filepath));
@@ -126,7 +120,7 @@ public class Main {
 
     private static List<String> findCompletedModulesOfOntologie(String filepath) throws IOException {
         String name = filepath.split("\\.")[0];
-        try(Stream<Path> fif = Files.walk(Paths.get("/output"))){
+        try(Stream<Path> fif = Files.walk(Paths.get("/app/output"))){
             return fif.filter(Files::isRegularFile)
                     .map(Path::toFile)
                     .map(File::getName)
